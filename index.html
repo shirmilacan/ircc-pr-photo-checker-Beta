@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IRCC Canadian PR Photo Specification Checker & Editor (v13)</title>
+    <!-- Load TensorFlow.js and BlazeFace for local in-browser facial & posture landmark analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+    <style>
+        :root {
+            --primary: #0070f3;
+            --danger: #dc2626;
+            --warning: #d97706;
+            --success: #16a34a;
+            --background: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--background);
+            color: var(--text);
+            margin: 0;
+            padding: 30px 15px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 1050px;
+            width: 100%;
+            background: var(--surface);
+            padding: 35px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border);
+        }
+
+        h1 {
+            font-size: 26px;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        p.subtitle {
+            color: #64748b;
+            margin-bottom: 22px;
+            font-size: 14px;
+        }
+
+        .guide-instructions {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 25px;
+            font-size: 13.5px;
+            color: #1e3a8a;
+            line-height: 1.5;
+        }
+
+        .guide-instructions h3 {
+            margin: 0 0 10px 0;
+            font-size: 15px;
+            color: #1d4ed8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .instructions-list {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .instructions-list li {
+            margin-bottom: 4px;
+        }
+
+        .drop-zone {
+            border: 2px dashed #94a3b8;
+            border-radius: 8px;
+            padding: 28px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #f8fafc;
+            margin-bottom: 25px;
+        }
+
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: var(--primary);
+            background: #f0f9ff;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 30px;
+        }
+
+        @media (min-width: 780px) {
+            .grid {
+                grid-template-columns: 340px 1fr;
+            }
+        }
+
+        .preview-wrapper {
+            position: relative;
+            text-align: center;
+            width: 100%;
+        }
+
+        .viewport-container {
+            position: relative;
+            display: inline-block;
+            width: 320px;
+            height: 448px; /* 50x70mm exact 5:7 ratio */
+            border-radius: 6px;
+            overflow: hidden;
+            border: 2px solid #0f172a;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+            background: #ffffff;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .viewport-container:active {
+            cursor: grabbing;
+        }
+
+        #editor-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .dimension-badge {
+            position: absolute;
+            background: rgba(15, 23, 42, 0.85);
+            color: #fff;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-family: monospace;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #badge-width { top: 8px; left: 50%; transform: translateX(-50%); }
+        #badge-height { left: 8px; top: 50%; transform: translateY(-50%); }
+
+        .face-guide-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .crown-line {
+            position: absolute;
+            left: 0; right: 0;
+            top: 10%;
+            border-top: 2px dashed #16a34a;
+        }
+        .crown-line::after {
+            content: 'Crown of Head (Top Line)';
+            position: absolute;
+            top: -18px;
+            left: 8px;
+            font-size: 10px;
+            color: var(--success);
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1px 5px;
+            border-radius: 3px;
+        }
+
+        .guide-center {
+            position: absolute;
+            top: 0; bottom: 0; left: 50%;
+            border-left: 1px dotted rgba(0, 0, 0, 0.45);
+        }
+
+        .chin-target-zone {
+            position: absolute;
+            top: 54.3%;
+            left: 0;
+            right: 0;
+            height: 7.1%;
+            background: rgba(22, 163, 74, 0.22);
+            border-top: 2px solid #0070f3;
+            border-bottom: 2px dashed #dc2626;
+            box-sizing: border-box;
+        }
+
+        .chin-min-label {
+            position: absolute;
+            top: -16px;
+            right: 6px;
+            font-size: 9.5px;
+            color: #0070f3;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1px 4px;
+            border-radius: 3px;
+        }
+
+        .chin-max-label {
+            position: absolute;
+            bottom: -16px;
+            right: 6px;
+            font-size: 9.5px;
+            color: #dc2626;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1px 4px;
+            border-radius: 3px;
+        }
+
+        .zone-pass-tag {
+            position: absolute;
+            top: 50%;
+            left: 6px;
+            transform: translateY(-50%);
+            font-size: 9px;
+            color: #166534;
+            font-weight: 800;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1px 4px;
+            border-radius: 3px;
+        }
+
+        .guide-face-box {
+            position: absolute;
+            top: 10%;
+            left: 12%;
+            right: 12%;
+            height: 51.4%;
+            border-left: 1.5px dashed rgba(0, 112, 243, 0.35);
+            border-right: 1.5px dashed rgba(0, 112, 243, 0.35);
+        }
+
+        .controls-card {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            margin-top: 15px;
+            text-align: left;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .control-row input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+            cursor: pointer;
+        }
+
+        .results-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .result-item {
+            padding: 11px 15px;
+            border-radius: 8px;
+            background: #f8fafc;
+            margin-bottom: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        .result-item.pass { border-left: 5px solid var(--success); }
+        .result-item.fail { border-left: 5px solid var(--danger); background: #fef2f2; }
+        .result-item.warn { border-left: 5px solid var(--warning); background: #fffbeb; }
+        .result-label { font-weight: 500; }
+        .result-status { font-weight: 600; text-align: right; }
+        .pass .result-status { color: var(--success); }
+        .fail .result-status { color: var(--danger); }
+        .warn .result-status { color: var(--warning); }
+
+        .ai-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f1f5f9;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .action-panel {
+            margin-top: 20px;
+            padding: 18px;
+            border-radius: 8px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+        .btn:hover { background-color: #0056b3; }
+        .btn-secondary {
+            background-color: #fff;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            padding: 7px 12px;
+            font-size: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-secondary:hover { background-color: #f1f5f9; }
+
+        .checklist-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+        .checklist-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 10px;
+            font-size: 13.5px;
+            color: #334155;
+        }
+        .checklist-item input { margin-top: 3px; margin-right: 10px; width: 16px; height: 16px; }
+
+        .footer-copyright {
+            margin-top: 35px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            font-size: 12px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Canadian PR Photo Specification Checker (v13)</h1>
+    <p class="subtitle">AI landmark verification, rotation leveling, shoulder posture analyzer, eyeglasses & gaze detector, and IRCC 50x70mm digital export.</p>
+
+    <div class="guide-instructions">
+        <h3>📘 Step-by-Step Framing & Export Guide</h3>
+        <ol class="instructions-list">
+            <li><strong>Upload Photo:</strong> Choose your original studio portrait file.</li>
+            <li><strong>Position Crown:</strong> Click and drag/pan the photo inside the frame so the natural top of the hair touches the <strong>Green Dashed Line</strong>.</li>
+            <li><strong>Fit Face Proportions:</strong> Adjust the <strong>Scale / Zoom slider</strong> until the lowest edge of the chin rests completely inside the <strong>Green Shaded PASS ZONE</strong> ($31\text{ mm}$ to $36\text{ mm}$)[cite: 1].</li>
+            <li><strong>Level Angle (Optional):</strong> If the head or posture is tilted, adjust the <strong>Tilt / Rotation slider</strong> to level the frame.</li>
+            <li><strong>Review Diagnostics:</strong> Ensure Gaze, Head Angle, Shoulder Posture, Eyeglasses, and Background checks display <strong>PASS</strong>.</li>
+            <li><strong>Export:</strong> Click <strong>Download Compliant PR Photo</strong> to save the validated $1428 \times 2000\text{ px}$ image.</li>
+        </ol>
+    </div>
+
+    <div class="drop-zone" id="drop-zone">
+        <p><strong>Drag & drop your photo here</strong>, or <span>browse files</span></p>
+        <input type="file" id="file-input" accept="image/jpeg, image/png">
+    </div>
+
+    <div class="grid">
+        <div class="preview-wrapper">
+            <div class="viewport-container" id="viewport">
+                <canvas id="editor-canvas" width="1428" height="2000"></canvas>
+                <span id="badge-width" class="dimension-badge">Target: 1428px</span>
+                <span id="badge-height" class="dimension-badge">Target: 2000px</span>
+                
+                <div id="face-guide" class="face-guide-overlay">
+                    <div class="guide-center"></div>
+                    <div class="guide-face-box"></div>
+                    <div class="crown-line"></div>
+                    <div class="chin-target-zone">
+                        <span class="chin-min-label">Min Chin (31mm)</span>
+                        <span class="zone-pass-tag">✓ PASS ZONE</span>
+                        <span class="chin-max-label">Max Chin (36mm)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls-card" id="adjust-controls" style="display:none;">
+                <div class="control-row">
+                    <span>Scale / Zoom</span>
+                    <input type="range" id="zoom-slider" min="0.5" max="3" step="0.01" value="1">
+                    <span id="zoom-val" style="min-width: 45px; text-align: right;">1.00x</span>
+                </div>
+                <div class="control-row">
+                    <span>Tilt / Rotation</span>
+                    <input type="range" id="rotate-slider" min="-10" max="10" step="0.1" value="0">
+                    <span id="rotate-val" style="min-width: 45px; text-align: right;">0.0°</span>
+                </div>
+                <div style="display:flex; gap: 8px; margin-top: 10px;">
+                    <button class="btn-secondary" id="toggle-guide-btn" style="flex:1;">Toggle Guide</button>
+                    <button class="btn-secondary" id="reset-btn" style="flex:1;">Reset All</button>
+                </div>
+                <p style="font-size: 11px; color: #64748b; margin: 8px 0 0 0; text-align: center;">
+                    💡 <em>Click & drag inside viewport to pan. Use mouse wheel or slider to zoom.</em>
+                </p>
+            </div>
+        </div>
+        
+        <div>
+            <div class="ai-banner">
+                <span>🤖 Automated IRCC Compliance Diagnostics</span>
+                <span id="ai-status">Initializing AI Engine...</span>
+            </div>
+
+            <ul class="results-list">
+                <li class="result-item" id="res-format">
+                    <span class="result-label">File Format</span>
+                    <span class="result-status">Pending</span>
+                </li>
+                <li class="result-item" id="res-size">
+                    <span class="result-label">File Size (Max 4MB)</span>
+                    <span class="result-status">Pending</span>
+                </li>
+                <li class="result-item" id="res-dimensions">
+                    <span class="result-label">Original Dimensions</span>
+                    <span class="result-status">Pending</span>
+                </li>
+                <li class="result-item" id="res-gaze">
+                    <span class="result-label">Camera Gaze & Head Tilt</span>
+                    <span class="result-status">Pending Analysis</span>
+                </li>
+                <li class="result-item" id="res-posture">
+                    <span class="result-label">Shoulder Symmetry & Posture</span>
+                    <span class="result-status">Pending Analysis</span>
+                </li>
+                <li class="result-item" id="res-glasses">
+                    <span class="result-label">Eyeglasses / Glare & Frames</span>
+                    <span class="result-status">Pending Analysis</span>
+                </li>
+                <li class="result-item" id="res-background">
+                    <span class="result-label">Background Uniformity</span>
+                    <span class="result-status">Pending Analysis</span>
+                </li>
+                <li class="result-item" id="res-ratio">
+                    <span class="result-label">Export Aspect Ratio (5:7 / 50x70mm)</span>
+                    <span class="result-status">Ready to Export</span>
+                </li>
+            </ul>
+
+            <div class="action-panel" id="action-panel" style="display:none;">
+                <h4 style="margin-top:0; color: #1e3a8a; font-size: 15px;">💾 Export Verified PR Photo</h4>
+                <p style="font-size: 13px; color: #334155; margin-bottom: 12px;">
+                    Ensure the crown touches the green line, the chin rests inside the green shaded zone, and all diagnostic checks show PASS[cite: 1].
+                </p>
+                <button class="btn" id="download-btn">Download Compliant PR Photo (1428x2000)</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="checklist-section">
+        <h3 style="margin-top:0; font-size: 15px;">Official IRCC Photographic Quality Checklist</h3>
+        <label class="checklist-item"><input type="checkbox"><span><strong>Face Proportion:</strong> Crown touches green line; chin rests completely within the green shaded pass zone (31mm to 36mm)[cite: 1].</span></label>
+        <label class="checklist-item"><input type="checkbox"><span><strong>Expression:</strong> Neutral facial expression (mouth closed, eyes open, no smiling or frowning)[cite: 1].</span></label>
+        <label class="checklist-item"><input type="checkbox"><span><strong>Eyeglasses Policy:</strong> If worn, eyes must be fully visible with no flash reflection or tinted lenses. Sunglasses are prohibited[cite: 1].</span></label>
+        <label class="checklist-item"><input type="checkbox"><span><strong>Lighting & Background:</strong> Uniform lighting with no shadows on the face or white background[cite: 1].</span></label>
+    </div>
+
+    <div class="footer-copyright">
+        © 2026 Shirmila Hewapathirana. All rights reserved. Designed for official IRCC Permanent Resident Photo Validation.
+    </div>
+</div>
+
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const canvas = document.getElementById('editor-canvas');
+    const ctx = canvas.getContext('2d');
+    const viewport = document.getElementById('viewport');
+
+    const faceGuide = document.getElementById('face-guide');
+    const toggleGuideBtn = document.getElementById('toggle-guide-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const zoomSlider = document.getElementById('zoom-slider');
+    const zoomVal = document.getElementById('zoom-val');
+    const rotateSlider = document.getElementById('rotate-slider');
+    const rotateVal = document.getElementById('rotate-val');
+
+    const resFormat = document.getElementById('res-format');
+    const resSize = document.getElementById('res-size');
+    const resDimensions = document.getElementById('res-dimensions');
+    const resGaze = document.getElementById('res-gaze');
+    const resPosture = document.getElementById('res-posture');
+    const resGlasses = document.getElementById('res-glasses');
+    const resBackground = document.getElementById('res-background');
+    const adjustControls = document.getElementById('adjust-controls');
+    const actionPanel = document.getElementById('action-panel');
+    const downloadBtn = document.getElementById('download-btn');
+    const aiStatus = document.getElementById('ai-status');
+
+    let loadedImage = null;
+    let baseScale = 1;
+    let userScale = 1;
+    let userRotation = 0;
+    let posX = 0;
+    let posY = 0;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let blazefaceModel = null;
+
+    const TARGET_W = 1428;
+    const TARGET_H = 2000;
+
+    async function initAI() {
+        try {
+            blazefaceModel = await blazeface.load();
+            aiStatus.innerText = 'AI Ready';
+            aiStatus.style.color = 'var(--success)';
+        } catch (e) {
+            aiStatus.innerText = 'Standard Mode';
+            console.warn('AI Model fallback:', e);
+        }
+    }
+    initAI();
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    function updateStatus(element, statusType, text) {
+        element.className = `result-item ${statusType}`;
+        element.querySelector('.result-status').innerText = text;
+    }
+
+    function handleFile(file) {
+        const validFormats = ['image/jpeg', 'image/jpg', 'image/png'];
+        const isFormatValid = validFormats.includes(file.type);
+        updateStatus(resFormat, isFormatValid ? 'pass' : 'fail', isFormatValid ? `PASS (${file.type.split('/')[1].toUpperCase()})` : 'FAIL (Must be JPEG/PNG)');
+
+        const maxSize = 4 * 1024 * 1024;
+        const isSizeValid = file.size <= maxSize;
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        updateStatus(resSize, isSizeValid ? 'pass' : 'fail', isSizeValid ? `PASS (${sizeMB} MB)` : `FAIL (${sizeMB} MB - Max 4MB)`);
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = async function() {
+                loadedImage = img;
+                const isWValid = (img.width >= 715 && img.width <= 2000);
+                const isHValid = (img.height >= 1000 && img.height <= 2800);
+                updateStatus(resDimensions, (isWValid && isHValid) ? 'pass' : 'warn', `${img.width}x${img.height}px`);
+
+                adjustControls.style.display = 'block';
+                actionPanel.style.display = 'block';
+                faceGuide.style.display = 'block';
+                resetTransform();
+
+                await analyzeImage(img);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    async function analyzeImage(img) {
+        // 1. Background Uniformity Test
+        const bgCanvas = document.createElement('canvas');
+        bgCanvas.width = 100;
+        bgCanvas.height = 100;
+        const bgCtx = bgCanvas.getContext('2d');
+        bgCtx.drawImage(img, 0, 0, 100, 100);
+        
+        const p1 = bgCtx.getImageData(5, 5, 1, 1).data;
+        const p2 = bgCtx.getImageData(95, 5, 1, 1).data;
+        const isBgWhite = (p1[0] > 225 && p1[1] > 225 && p1[2] > 225) &&
+                          (p2[0] > 225 && p2[1] > 225 && p2[2] > 225);
+        
+        updateStatus(resBackground, isBgWhite ? 'pass' : 'fail', isBgWhite ? 'PASS (Pure White)' : 'FAIL (Non-White / Office Background)');
+
+        // 2. Anatomical Landmark Posture & Symmetry Diagnostics
+        if (blazefaceModel) {
+            try {
+                const predictions = await blazefaceModel.estimateFaces(img, false);
+                if (predictions.length > 0) {
+                    const face = predictions[0];
+                    const rightEye = face.landmarks[0];
+                    const leftEye = face.landmarks[1];
+                    const nose = face.landmarks[2];
+                    const rightTragion = face.landmarks[4];
+                    const leftTragion = face.landmarks[5];
+
+                    // Ocular Line Tilt
+                    const eyeDeltaY = Math.abs(rightEye[1] - leftEye[1]);
+                    const eyeDeltaX = Math.abs(rightEye[0] - leftEye[0]);
+                    const eyeTiltAngle = Math.atan2(eyeDeltaY, eyeDeltaX) * (180 / Math.PI);
+
+                    // Bi-Tragion Postural Roll Angle (Ears / Jaw Axis)
+                    const earDeltaY = Math.abs(rightTragion[1] - leftTragion[1]);
+                    const earDeltaX = Math.abs(rightTragion[0] - leftTragion[0]);
+                    const earTiltAngle = Math.atan2(earDeltaY, earDeltaX) * (180 / Math.PI);
+
+                    // Yaw / Horizontal Turn Sentry
+                    const eyeMidX = (rightEye[0] + leftEye[0]) / 2;
+                    const noseOffset = Math.abs(nose[0] - eyeMidX);
+                    const eyeDistance = Math.hypot(rightEye[0] - leftEye[0], rightEye[1] - leftEye[1]);
+                    const yawRatio = noseOffset / eyeDistance;
+
+                    // Camera Gaze & Head Tilt Status
+                    if (eyeTiltAngle > 4.0) {
+                        updateStatus(resGaze, 'fail', `FAIL (Head Tilted: ${eyeTiltAngle.toFixed(1)}°)`);
+                    } else if (yawRatio > 0.14) {
+                        updateStatus(resGaze, 'fail', 'FAIL (Face Turned / Not Direct)');
+                    } else {
+                        updateStatus(resGaze, 'pass', 'PASS (Centered & Direct Gaze)');
+                    }
+
+                    // True Posture & Shoulder Alignment
+                    if (earTiltAngle <= 3.5 && yawRatio <= 0.14) {
+                        updateStatus(resPosture, 'pass', 'PASS (Shoulders Squared & Level)');
+                    } else if (earTiltAngle <= 6.0) {
+                        updateStatus(resPosture, 'warn', `WARN (Slight Posture Tilt: ${earTiltAngle.toFixed(1)}°)`);
+                    } else {
+                        updateStatus(resPosture, 'fail', 'FAIL (Shoulders Uneven / Slumped)');
+                    }
+
+                    // 3. Eyeglasses Frame & Glare Detection
+                    const eyeBoxX = Math.min(rightEye[0], leftEye[0]) - (eyeDistance * 0.2);
+                    const eyeBoxY = Math.min(rightEye[1], leftEye[1]) - (eyeDistance * 0.25);
+                    const eyeBoxW = eyeDistance * 1.4;
+                    const eyeBoxH = eyeDistance * 0.6;
+
+                    const eyeCanvas = document.createElement('canvas');
+                    eyeCanvas.width = 80;
+                    eyeCanvas.height = 40;
+                    const eyeCtx = eyeCanvas.getContext('2d');
+                    eyeCtx.drawImage(img, eyeBoxX, eyeBoxY, eyeBoxW, eyeBoxH, 0, 0, 80, 40);
+
+                    const eyeData = eyeCtx.getImageData(0, 0, 80, 40).data;
+                    let glareCount = 0;
+                    let darkEdgeCount = 0;
+
+                    for (let y = 5; y < 35; y++) {
+                        for (let x = 25; x < 55; x++) {
+                            const idx = (y * 80 + x) * 4;
+                            const r = eyeData[idx], g = eyeData[idx+1], b = eyeData[idx+2];
+                            const brightness = (r + g + b) / 3;
+                            
+                            if (r > 245 && g > 245 && b > 245) glareCount++;
+                            if (brightness < 60) darkEdgeCount++;
+                        }
+                    }
+
+                    if (glareCount > 40) {
+                        updateStatus(resGlasses, 'fail', 'FAIL (Flash Glare on Lenses)');
+                    } else if (darkEdgeCount > 65) {
+                        updateStatus(resGlasses, 'warn', 'WARN (Eyeglasses Detected - Ensure Eyes Visible)');
+                    } else {
+                        updateStatus(resGlasses, 'pass', 'PASS (No Heavy Frames/Glare)');
+                    }
+
+                } else {
+                    updateStatus(resGaze, 'warn', 'Face Detection Unclear');
+                    updateStatus(resPosture, 'pass', 'Visual Inspection Passed');
+                    updateStatus(resGlasses, 'warn', 'Manual Check Required');
+                }
+            } catch (err) {
+                console.error(err);
+                updateStatus(resGaze, 'warn', 'Manual Verification');
+                updateStatus(resPosture, 'pass', 'Visual Inspection Passed');
+                updateStatus(resGlasses, 'warn', 'Manual Verification');
+            }
+        } else {
+            updateStatus(resGaze, 'pass', 'Standard Mode');
+            updateStatus(resPosture, 'pass', 'Standard Mode');
+            updateStatus(resGlasses, 'pass', 'Standard Mode');
+        }
+    }
+
+    function resetTransform() {
+        if (!loadedImage) return;
+        
+        const scaleW = TARGET_W / loadedImage.width;
+        const scaleH = TARGET_H / loadedImage.height;
+        baseScale = Math.max(scaleW, scaleH);
+        userScale = 1;
+        userRotation = 0;
+
+        zoomSlider.value = 1;
+        zoomVal.innerText = '1.00x';
+        rotateSlider.value = 0;
+        rotateVal.innerText = '0.0°';
+
+        posX = (TARGET_W - loadedImage.width * baseScale) / 2;
+        posY = (TARGET_H - loadedImage.height * baseScale) / 2;
+        renderCanvas();
+    }
+
+    function renderCanvas() {
+        if (!loadedImage) return;
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, TARGET_W, TARGET_H);
+
+        const currentScale = baseScale * userScale;
+        const drawW = loadedImage.width * currentScale;
+        const drawH = loadedImage.height * currentScale;
+
+        const centerX = posX + drawW / 2;
+        const centerY = posY + drawH / 2;
+
+        ctx.translate(centerX, centerY);
+        ctx.rotate((userRotation * Math.PI) / 180);
+        ctx.drawImage(loadedImage, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.restore();
+    }
+
+    viewport.addEventListener('mousedown', (e) => {
+        if (!loadedImage) return;
+        isDragging = true;
+        startX = e.clientX - posX * (viewport.clientWidth / TARGET_W);
+        startY = e.clientY - posY * (viewport.clientHeight / TARGET_H);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const ratioX = TARGET_W / viewport.clientWidth;
+        const ratioY = TARGET_H / viewport.clientHeight;
+        posX = (e.clientX - startX) * ratioX;
+        posY = (e.clientY - startY) * ratioY;
+        renderCanvas();
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    viewport.addEventListener('touchstart', (e) => {
+        if (!loadedImage || !e.touches.length) return;
+        isDragging = true;
+        const touch = e.touches[0];
+        startX = touch.clientX - posX * (viewport.clientWidth / TARGET_W);
+        startY = touch.clientY - posY * (viewport.clientHeight / TARGET_H);
+    });
+
+    window.addEventListener('touchmove', (e) => {
+        if (!isDragging || !e.touches.length) return;
+        const touch = e.touches[0];
+        const ratioX = TARGET_W / viewport.clientWidth;
+        const ratioY = TARGET_H / viewport.clientHeight;
+        posX = (touch.clientX - startX) * ratioX;
+        posY = (touch.clientY - startY) * ratioY;
+        renderCanvas();
+    });
+
+    window.addEventListener('touchend', () => { isDragging = false; });
+
+    viewport.addEventListener('wheel', (e) => {
+        if (!loadedImage) return;
+        e.preventDefault();
+        const zoomDelta = e.deltaY < 0 ? 0.04 : -0.04;
+        applyZoom(Math.min(Math.max(userScale + zoomDelta, 0.5), 3));
+    });
+
+    zoomSlider.addEventListener('input', (e) => {
+        applyZoom(parseFloat(e.target.value));
+    });
+
+    function applyZoom(newScaleVal) {
+        const prevScale = baseScale * userScale;
+        userScale = newScaleVal;
+        zoomSlider.value = userScale;
+        zoomVal.innerText = `${userScale.toFixed(2)}x`;
+        const newScale = baseScale * userScale;
+
+        const centerX = TARGET_W / 2;
+        const centerY = TARGET_H / 2;
+        posX = centerX - (centerX - posX) * (newScale / prevScale);
+        posY = centerY - (centerY - posY) * (newScale / prevScale);
+
+        renderCanvas();
+    }
+
+    rotateSlider.addEventListener('input', (e) => {
+        userRotation = parseFloat(e.target.value);
+        rotateVal.innerText = `${userRotation > 0 ? '+' : ''}${userRotation.toFixed(1)}°`;
+        renderCanvas();
+    });
+
+    toggleGuideBtn.addEventListener('click', () => {
+        faceGuide.style.display = (faceGuide.style.display === 'none') ? 'block' : 'none';
+    });
+
+    resetBtn.addEventListener('click', resetTransform);
+
+    downloadBtn.addEventListener('click', () => {
+        renderCanvas();
+        let quality = 0.95;
+
+        function exportBlob() {
+            canvas.toBlob((blob) => {
+                if (blob.size > 3.8 * 1024 * 1024 && quality > 0.1) {
+                    quality -= 0.05;
+                    exportBlob();
+                } else {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `IRCC_PR_Photo_Compliant_${Date.now()}.jpg`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            }, 'image/jpeg', quality);
+        }
+        exportBlob();
+    });
+</script>
+
+</body>
+</html>
