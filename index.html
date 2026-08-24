@@ -361,8 +361,19 @@
         }
         .checklist-item input { margin-top: 3px; margin-right: 10px; width: 16px; height: 16px; }
 
+        .privacy-banner {
+            font-size: 12px;
+            color: #64748b;
+            text-align: center;
+            margin-top: 25px;
+            padding: 10px;
+            background: #f8fafc;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+
         .footer-copyright {
-            margin-top: 35px;
+            margin-top: 20px;
             padding-top: 15px;
             border-top: 1px solid var(--border);
             text-align: center;
@@ -382,7 +393,7 @@
         <ol class="instructions-list">
             <li><strong>Upload Photo:</strong> Choose your original studio portrait file.</li>
             <li><strong>Position Crown:</strong> Click and drag/pan the photo inside the frame so the natural top of the hair touches the <strong>Green Dashed Line</strong>.</li>
-            <li><strong>Fit Face Proportions:</strong> Adjust the <strong>Scale / Zoom slider</strong> until the lowest edge of the chin rests completely inside the <strong>Green Shaded PASS ZONE</strong> ($31\text{ mm}$ to $36\text{ mm}$)[cite: 1].</li>
+            <li><strong>Fit Face Proportions:</strong> Adjust the <strong>Scale / Zoom slider</strong> until the lowest edge of the chin rests completely inside the <strong>Green Shaded PASS ZONE</strong> ($31\text{ mm}$ to $36\text{ mm}$).</li>
             <li><strong>Level Angle (Optional):</strong> If the head or posture is tilted, adjust the <strong>Tilt / Rotation slider</strong> to level the frame.</li>
             <li><strong>Review Diagnostics:</strong> Ensure Gaze, Head Angle, Shoulder Posture, Eyeglasses, and Background checks display <strong>PASS</strong>.</li>
             <li><strong>Export:</strong> Click <strong>Download Compliant PR Photo</strong> to save the validated $1428 \times 2000\text{ px}$ image.</li>
@@ -478,7 +489,7 @@
             <div class="action-panel" id="action-panel" style="display:none;">
                 <h4 style="margin-top:0; color: #1e3a8a; font-size: 15px;">💾 Export Verified PR Photo</h4>
                 <p style="font-size: 13px; color: #334155; margin-bottom: 12px;">
-                    Ensure the crown touches the green line, the chin rests inside the green shaded zone, and all diagnostic checks show PASS[cite: 1].
+                    Ensure the crown touches the green line, the chin rests inside the green shaded zone, and all diagnostic checks show PASS.
                 </p>
                 <button class="btn" id="download-btn">Download Compliant PR Photo (1428x2000)</button>
             </div>
@@ -487,10 +498,14 @@
 
     <div class="checklist-section">
         <h3 style="margin-top:0; font-size: 15px;">Official IRCC Photographic Quality Checklist</h3>
-        <label class="checklist-item"><input type="checkbox"><span><strong>Face Proportion:</strong> Crown touches green line; chin rests completely within the green shaded pass zone (31mm to 36mm)[cite: 1].</span></label>
-        <label class="checklist-item"><input type="checkbox"><span><strong>Expression:</strong> Neutral facial expression (mouth closed, eyes open, no smiling or frowning)[cite: 1].</span></label>
-        <label class="checklist-item"><input type="checkbox"><span><strong>Eyeglasses Policy:</strong> If worn, eyes must be fully visible with no flash reflection or tinted lenses. Sunglasses are prohibited[cite: 1].</span></label>
-        <label class="checklist-item"><input type="checkbox"><span><strong>Lighting & Background:</strong> Uniform lighting with no shadows on the face or white background[cite: 1].</span></label>
+        <label class="checklist-item"><input type="checkbox"><span><strong>Face Proportion:</strong> Crown touches green line; chin rests completely within the green shaded pass zone (31mm to 36mm).</span></label>
+        <label class="checklist-item"><input type="checkbox"><span><strong>Expression:</strong> Neutral facial expression (mouth closed, eyes open, no smiling or frowning).</span></label>
+        <label class="checklist-item"><input type="checkbox"><span><strong>Eyeglasses Policy:</strong> If worn, eyes must be fully visible with no flash reflection or tinted lenses. Sunglasses are prohibited.</span></label>
+        <label class="checklist-item"><input type="checkbox"><span><strong>Lighting & Background:</strong> Uniform lighting with no shadows on the face or white background.</span></label>
+    </div>
+
+    <div class="privacy-banner">
+        🔒 <strong>Privacy Assurance:</strong> All image processing and AI diagnostics run 100% locally on your device. No images or biometric data are stored or uploaded to any server.
     </div>
 
     <div class="footer-copyright">
